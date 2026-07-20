@@ -1,7 +1,7 @@
 # E2/E3: RemixIT 自己学習の設定
 data_dir: data/jvs2mix_noisy_8k          # mix/ のみ使用(正解には触れない)
 model_config: scripts/conf/model_small.yaml
-teacher_exp_dir: /mnt/kiso-qnap5/kueki/proken-A/third_party/tf-locoformer/egs2/librimix/enh1/exp/enh_train_enh_tflocoformer_raw
+teacher_exp_dir: /mnt/kiso-qnap5/kueki/proken-A/third_party/tf-locoformer/egs2/whamr/enh1/exp/enh_train_enh_tflocoformer_raw  # E0結果でWHAMR!版が最良(9.09dB)、DEC-010
 sample_rate: 8000
 segment_sec: 4.0
 batch_size: 2          # バッチ内置換のため 2 以上必須

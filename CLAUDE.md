@@ -32,13 +32,20 @@
 | 用途 | パス |
 |---|---|
 | JVS(16kHz変換・話者disjoint分割済み) | `~/corpora/jvs/{train,valid,test}_wavs.txt` |
-| 生成した2話者混合 | `data/jvs2mix_8k/{train,valid,test}/{mix,s1,s2}/` |
-| 教師チェックポイント(MERL, 8kHz) | `/mnt/kiso-qnap5/kueki/proken-A/third_party/tf-locoformer/egs2/*/enh1/exp/*/valid.loss.ave_5best.pth` |
+| 2話者混合(クリーン版, 対照条件) | `data/jvs2mix_8k/{train,valid,test}/{mix,s1,s2}/` |
+| **2話者混合(雑音版, 適応先本体, DEC-010)** | `data/jvs2mix_noisy_8k/{train,valid,test}/{mix,s1,s2,noise}/` |
+| WHAM! noise(適応先の雑音源) | `/mnt/kiso-qnap5/kueki/proken-A/corpora/wham_noise/{tr,cv,tt}/` |
+| 教師チェックポイント(MERL, 8kHz) | `/mnt/kiso-qnap5/kueki/proken-A/third_party/tf-locoformer/egs2/*/enh1/exp/*/valid.loss.ave_5best.pth`(**採用教師 = whamr/**, DEC-010) |
+| RemixIT 共通コード | `remixit/`(remix.py / datasets.py / losses.py / separator.py / training.py) |
+| 単体テスト | `tests/`(pytest) |
 | 実験成果物 | `exp/`(NAS) |
 
-## 実験の流れ(詳細: docs/04_experiment_plan.md)
+## 実験の流れ(詳細: docs/04_experiment_plan.md, 進捗: docs/07_results.md)
 
 E0 教師ゼロショット評価(Go/No-Go: SI-SNRi ≥ 5dB)→ E1 教師あり上限 → E2 RemixIT(static) → E3 RemixIT(sequential)
+
+- E0(クリーン・雑音とも)完了。教師は WHAMR! 版に確定(雑音下 SI-SNRi 9.09dB で最良)。
+- E1・E2 は雑音版データ(jvs2mix_noisy_8k)で学習中。
 
 ## 関連プロジェクト
 

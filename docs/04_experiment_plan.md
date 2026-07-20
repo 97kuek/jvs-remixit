@@ -3,6 +3,7 @@
 > 研究の目的・動機は [00_research_motivation.md](00_research_motivation.md)、決定事項は [03_decision_log.md](03_decision_log.md) を正とする。
 > v0.2 からの変更: E0 の結果(クリーン日本語混合は英語教師がゼロショット 25dB で分離可能 → 適応の余地なし)を受け、
 > 適応先を **WHAM! noise つき日本語混合** に変更(DEC-010)。クリーン版 E0 は対照条件として発表に残す。
+> **進捗は [07_results.md](07_results.md) を参照**(E0 完了・教師 WHAMR! 版に確定・E1/E2 学習中、W1 の予定を前倒しで消化)。
 
 ## 研究課題 (RQ)
 

@@ -1,5 +1,5 @@
 # E1: 教師あり上限(オラクル)の学習設定
-data_dir: data/jvs2mix_noisy_8k
+data_dir: data/jvs2mix_noisy_8k  # DEC-010: 適応先は雑音つき混合
 model_config: scripts/conf/model_small.yaml
 sample_rate: 8000
 segment_sec: 4.0

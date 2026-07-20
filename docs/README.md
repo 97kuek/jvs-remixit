@@ -11,7 +11,7 @@
 | [04_experiment_plan.md](04_experiment_plan.md) | 実験計画 |
 | [05_architecture.md](05_architecture.md) | システム設計(リポジトリ構成・データフロー) |
 | [06_change_log.md](06_change_log.md) | コード変更ログ(何を・なぜ・どう変えたか) |
+| [07_results.md](07_results.md) | 実験結果ログ(E0〜、随時更新) |
 | RemixIT.pdf / TF-Locoformer.pdf | 原論文 |
 
 AIエージェント向けの作業ルールはリポジトリ直下の [CLAUDE.md](../CLAUDE.md)。
-今後追加予定: 実験結果ログ(07)
