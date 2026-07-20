@@ -47,6 +47,18 @@
   - **雑音専用の独立 rng**(seed+1000)を使う。共有 rng だと雑音の乱数消費が後続の話者ペア抽選をずらし、クリーン版と混合系列が一致しなくなるため。同一 seed のクリーン版と「同じ話者ペア・同じ話者間 SNR で雑音だけ違う」対照比較ができる。
   - 雑音はステレオの ch0 を使用(WHAM! の 1ch タスクの慣例)、短い場合はタイル+ランダムオフセット切り出し。noise/ サブディレクトリにも保存し、診断や E4 に使えるようにした。
 
+### W2 中核実装: remixit/ パッケージ + 学習スクリプト (2026-07-20)
+
+- **remixit/remix.py**: バッチ内リミキシング。置換は**不動点なし(derangement)**でサンプル — 不動点があるとその要素は「教師推定の和 ≒ 元の混合」となり学習信号が弱まるため。
+- **remixit/datasets.py**: `MixtureOnlyDataset` は mix/ しか参照しない設計(RemixIT が正解に触れないことをクラスレベルで保証)。テストで s1/s2 へのファイルアクセスがないことを監視して検証。
+- **remixit/losses.py**: 2話者 PIT + negative SI-SNR を自前実装(2置換の総当たり)。ESPnet の損失クラスへの依存を避け、リミキシング損失と評価で同一実装を使う。
+- **remixit/separator.py**: 教師(MERL exp から構築)と生徒(自前 config からスクラッチ)を同一の波形 in/out ラッパ `SeparationModel` に統一。RemixIT の sequential 教師更新は `deepcopy(student)` で実現(教師と生徒のアーキテクチャが異なっても成立する。RemixIT 論文も学生で教師を置換する方式)。
+- **remixit/training.py**: warmup+cosine スケジューラ(jchat-sep の教訓: 最初から自動化)、自前 ckpt 形式、W&B 初期化。
+- **scripts/train_supervised.py (E1) / train_remixit.py (E2/E3)**: 1スクリプト1実験。RemixIT の検証損失は「教師との一致度」であり発散検知用(docstring に明記)。teacher_update: static/sequential を config で切替。
+- **バッチサイズの実測 (2080 Ti 11GB)**: batch4×4s → OOM、batch4×3s → OOM(10.6GB)、**batch2×4s → OK** → batch 2 + 勾配累積 2(実効4)で確定。B=2 でも derangement は成立し(=スワップ)、エポックごとにバッチの組成が変わるためリミキシングの多様性はステップ間で確保される。
+- **eval_separation.py**: `--student_ckpt` を追加し、教師(ESPnet形式)と生徒(自前形式)を同一評価経路で比較できるようにした。
+- スモーク: E1/E2 とも GPU で数ステップの学習が通ることを確認。ユニットテスト 6 件 pass。
+
 ### remixit/espnet_compat.py — TF-Locoformer の実行時登録(新規)
 
 - **問題**: 教師 ckpt の config.yaml は `separator: tflocoformer` を指定するが、環境の ESPnet 202402 の `separator_choices` に tflocoformer が未登録で、`SeparateSpeech` の構築が ValueError で失敗した(モジュール自体は環境に存在)。MERL 公式の手順は espnet2/tasks/enh.py への**パッチ適用**。

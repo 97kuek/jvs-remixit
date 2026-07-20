@@ -1,0 +1,16 @@
+# E1: 教師あり上限(オラクル)の学習設定
+data_dir: data/jvs2mix_noisy_8k
+model_config: scripts/conf/model_small.yaml
+sample_rate: 8000
+segment_sec: 4.0
+batch_size: 2
+grad_accum: 2
+num_workers: 4
+epochs: 60
+lr: 1.0e-3
+warmup_steps: 4000
+lr_min_ratio: 0.01
+weight_decay: 1.0e-2
+grad_clip: 5.0
+early_stop_patience: 10
+seed: 0

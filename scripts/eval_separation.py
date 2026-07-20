@@ -46,8 +46,9 @@ def pit_si_snr(ests, refs):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--train_config", required=True, help="ESPnet config.yaml")
-    ap.add_argument("--model_file", required=True, help="チェックポイント .pth")
+    ap.add_argument("--train_config", help="ESPnet config.yaml(教師の評価時)")
+    ap.add_argument("--model_file", help="ESPnet チェックポイント .pth(教師の評価時)")
+    ap.add_argument("--student_ckpt", help="自前形式チェックポイント(train_*.py の出力、生徒の評価時)")
     ap.add_argument("--data_dir", required=True, help="{mix,s1,s2}/ を含むディレクトリ")
     ap.add_argument("--out", required=True, help="結果の出力ディレクトリ")
     ap.add_argument("--tag", default="model", help="結果ファイルの識別名")
@@ -55,14 +56,31 @@ def main():
     ap.add_argument("--limit", type=int, default=None, help="評価ファイル数の上限(smoke用)")
     args = ap.parse_args()
 
-    import remixit.espnet_compat  # noqa: F401  (tflocoformer をタスクへ実行時登録)
-    from espnet2.bin.enh_inference import SeparateSpeech
-    separate = SeparateSpeech(
-        train_config=args.train_config,
-        model_file=args.model_file,
-        normalize_output_wav=False,
-        device=args.device,
-    )
+    if args.student_ckpt:
+        import torch
+        from remixit.training import load_student_checkpoint
+
+        model, _ = load_student_checkpoint(args.student_ckpt, args.device)
+        model.eval()
+        model_id = args.student_ckpt
+
+        def separate(mix_batch, fs):
+            with torch.no_grad():
+                est = model(torch.from_numpy(mix_batch).to(args.device))
+            return [est[:, i].cpu().numpy() for i in range(est.size(1))]
+
+    else:
+        assert args.train_config and args.model_file, \
+            "--student_ckpt か (--train_config + --model_file) のどちらかを指定"
+        import remixit.espnet_compat  # noqa: F401  (tflocoformer をタスクへ実行時登録)
+        from espnet2.bin.enh_inference import SeparateSpeech
+        model_id = args.model_file
+        separate = SeparateSpeech(
+            train_config=args.train_config,
+            model_file=args.model_file,
+            normalize_output_wav=False,
+            device=args.device,
+        )
 
     data = Path(args.data_dir)
     ids = sorted(p.stem for p in (data / "mix").glob("*.wav"))
@@ -95,7 +113,7 @@ def main():
     arr = np.array([[float(r[1]), float(r[2]), float(r[3])] for r in rows])
     summary = {
         "tag": args.tag,
-        "model_file": args.model_file,
+        "model_file": model_id,
         "data_dir": str(data),
         "n": len(rows),
         "si_snr_mean": round(float(arr[:, 0].mean()), 2),

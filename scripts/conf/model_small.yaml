@@ -1,0 +1,20 @@
+# 生徒モデル: TF-Locoformer Small(論文 Table 1、約5.0M params)
+# 2080 Ti 11GB での学習を想定(DEC-005)
+stft:
+  n_fft: 128         # 16ms @ 8kHz(教師と同一)
+  hop_length: 64     # 8ms
+separator:
+  num_spk: 2
+  n_layers: 4        # B
+  emb_dim: 96        # D
+  norm_type: rmsgroupnorm
+  num_groups: 4      # G
+  tf_order: ft
+  n_heads: 4         # H
+  flash_attention: false
+  attention_dim: 96
+  ffn_type: [swiglu_conv1d, swiglu_conv1d]   # マカロン構造
+  ffn_hidden_dim: [256, 256]                 # C
+  conv1d_kernel: 4   # K
+  conv1d_shift: 1
+  dropout: 0.0

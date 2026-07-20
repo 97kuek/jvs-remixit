@@ -1,0 +1,20 @@
+# E2/E3: RemixIT 自己学習の設定
+data_dir: data/jvs2mix_noisy_8k          # mix/ のみ使用(正解には触れない)
+model_config: scripts/conf/model_small.yaml
+teacher_exp_dir: /mnt/kiso-qnap5/kueki/proken-A/third_party/tf-locoformer/egs2/librimix/enh1/exp/enh_train_enh_tflocoformer_raw
+sample_rate: 8000
+segment_sec: 4.0
+batch_size: 2          # バッチ内置換のため 2 以上必須
+grad_accum: 2
+num_workers: 4
+epochs: 60
+lr: 1.0e-3
+warmup_steps: 4000
+lr_min_ratio: 0.01
+weight_decay: 1.0e-2
+grad_clip: 5.0
+seed: 0
+
+# 教師更新プロトコル(DEC: E2 = static, E3 = sequential)
+teacher_update: static        # static | sequential
+update_every_epochs: 20       # sequential 時のみ有効(RemixIT 論文準拠)
