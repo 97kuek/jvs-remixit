@@ -1,11 +1,12 @@
-# 実験計画 v0.2 (2026-07-20 改訂)
+# 実験計画 v0.3 (2026-07-20 改訂2: 適応先を雑音つきに難化)
 
-> 状態: ドラフト(コーパス構成 = DEC-003 の推奨案ベース。ユーザー最終確認待ち)
 > 研究の目的・動機は [00_research_motivation.md](00_research_motivation.md)、決定事項は [03_decision_log.md](03_decision_log.md) を正とする。
+> v0.2 からの変更: E0 の結果(クリーン日本語混合は英語教師がゼロショット 25dB で分離可能 → 適応の余地なし)を受け、
+> 適応先を **WHAM! noise つき日本語混合** に変更(DEC-010)。クリーン版 E0 は対照条件として発表に残す。
 
 ## 研究課題 (RQ)
 
-**RQ: 英語データで学習された分離モデルを教師とし、正解ラベルなしの日本語混合音のみを用いた RemixIT 自己学習で、TF-Locoformer 生徒をクロスリンガルにドメイン適応できるか?**
+**RQ: 英語クリーン環境で学習された分離モデルを教師とし、正解ラベルなしの「雑音つき日本語混合音」のみを用いた RemixIT 自己学習で、TF-Locoformer 生徒を言語・音響環境の両ドメインギャップに適応させられるか?**
 
 - 差分1(タスク): RemixIT を音声強調 → 2話者分離に拡張(リミキシング=話者スロットのバッチ内置換、生徒損失=PIT + SI-SNR)
 - 差分2(モデル): 軽量時間領域モデル → TF 領域 SoTA の TF-Locoformer
@@ -16,15 +17,15 @@
 
 | 役割 | データ | 備考 |
 |---|---|---|
-| 教師の事前学習 | なし(MERL 公開 TF-Locoformer チェックポイントを利用) | WHAMR! 2話者(8kHz)実績あり。W1 で利用可能な ckpt(WSJ0-2mix 版の有無)を確認 |
-| 適応先(生徒の学習) | JVS から生成する日本語2話者シミュ混合 | **ラベルは学習に使わない**(RemixIT)。話者 disjoint に train/valid/test 分割 |
-| 評価 | JVS シミュ test(正解あり) | SI-SNRi / SDRi |
+| 教師 | MERL 公開 TF-Locoformer(8kHz, Medium 15M)を無学習で利用 | E0 で WSJ0-2mix / Libri2mix / WHAMR! 版を比較し最良を採用 |
+| 適応先(生徒の学習) | **jvs2mix_noisy**: JVS 2話者混合 + WHAM! noise(SNR [-6,+3]dB, WHAM!準拠) | **ラベルは学習に使わない**(mix/ のみ)。話者・雑音とも disjoint 分割 |
+| 対照条件 | jvs2mix(クリーン版, 生成済み) | E0 済み: WSJ0 19.66 / Libri 25.37 dB(07_results.md) |
+| 評価 | jvs2mix_noisy test 1000件(正解あり) | PIT SI-SNRi |
 | (ストレッチ) | J-CHAT 実会話セグメント | 試聴デモのみ。定量評価はしない |
 
-未確定の設計論点:
-- [ ] サンプリング周波数: 教師 ckpt の学習条件に合わせる(WHAMR! 版なら 8kHz、JVS をダウンサンプル)。W1 で ckpt 確認後に確定
-- [ ] 混合条件: SIR 一様分布(例: −5〜5dB)、残響・雑音なしのクリーン混合から開始(教師が WHAMR! 版なら軽い残響付与も検討)
-- [ ] 混合数: train 10k / valid 1k / test 1k 目安(JVS 話者 100 名を 80/10/10 に disjoint 分割)
+確定済みの設計(旧・未確定論点):
+- [x] 8kHz 統一(DEC-008)、混合条件 SNR[-5,5]dB・min 長(DEC-008)、train 20k / valid 1k / test 1k
+- [x] 学習条件の実測: 2080 Ti 11GB では batch 2 × 4s + 勾配累積 2(batch 4 は OOM)
 
 ## 実験マトリクス(優先度順)
 
