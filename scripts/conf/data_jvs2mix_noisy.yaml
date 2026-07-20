@@ -1,0 +1,22 @@
+# JVS 2話者混合 + WHAM! noise(適応先ドメインの難化, DEC-010)
+sample_rate: 8000
+snr_range: [-5.0, 5.0]       # 話者間 SNR(クリーン版と同一)
+min_len_sec: 1.0
+noise:
+  # WHAM! の split 対応(tr/cv/tt)で雑音素材も disjoint に保つ
+  dirs:
+    train: /mnt/kiso-qnap5/kueki/proken-A/corpora/wham_noise/tr
+    valid: /mnt/kiso-qnap5/kueki/proken-A/corpora/wham_noise/cv
+    test: /mnt/kiso-qnap5/kueki/proken-A/corpora/wham_noise/tt
+  snr_range: [-6.0, 3.0]     # 大きい方の話者に対する雑音 SNR(WHAM! 準拠)
+num_mixtures:
+  train: 20000
+  valid: 1000
+  test: 1000
+filelists:
+  train: /home/kueki/corpora/jvs/train_wavs.txt
+  valid: /home/kueki/corpora/jvs/valid_wavs.txt
+  test: /home/kueki/corpora/jvs/test_wavs.txt
+out_dir: data/jvs2mix_noisy_8k
+seed: 20260720               # クリーン版と同じ seed → 話者ペア・SNR系列が一致し、
+                             # 「同一混合の雑音あり/なし」比較が可能になる

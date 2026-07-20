@@ -5,7 +5,12 @@
 段階2: 話者 disjoint な filelist から別話者ペアをサンプルし、
        SNR 一様 [snr_range] dB・min 長 fully-overlapped の混合を生成
 
-出力: {out_dir}/{split}/{mix,s1,s2}/{id}.wav + {out_dir}/{split}/metadata.csv
+config に noise: セクションがある場合(DEC-010)、WHAM! 準拠で雑音を付与する:
+  - 雑音ファイルは split ごとに disjoint(WHAM! の tr/cv/tt に対応)
+  - 大きい方の話者に対する雑音 SNR を一様 [noise.snr_range] dB でスケール
+  - 雑音が短い場合はタイル、長い場合はランダム区間を切り出し
+
+出力: {out_dir}/{split}/{mix,s1,s2[,noise]}/{id}.wav + {out_dir}/{split}/metadata.csv
 s1/s2(正解)は評価と教師あり上限 (E1) 用。RemixIT (E2/E3) は mix/ のみ参照する。
 
 使い方:
@@ -63,10 +68,35 @@ def build_8k_cache(filelist: Path, cache_dir: Path, sr: int) -> dict:
     return index
 
 
+def load_noise(path: str, n: int, sr: int, resamplers: dict, rng) -> np.ndarray:
+    """雑音を読み、モノラル化・リサンプルし、長さ n に合わせる。"""
+    noise, in_sr = sf.read(path, dtype="float32")
+    if noise.ndim > 1:
+        noise = noise[:, 0]  # WHAM! はステレオ。1ch タスクの慣例に従い ch0 を使用
+    if in_sr != sr:
+        if in_sr not in resamplers:
+            resamplers[in_sr] = torchaudio.transforms.Resample(in_sr, sr)
+        noise = resamplers[in_sr](torch.from_numpy(noise).unsqueeze(0)).squeeze(0).numpy()
+    if len(noise) < n:  # 短ければタイル
+        noise = np.tile(noise, n // len(noise) + 1)
+    off = rng.integers(len(noise) - n + 1)
+    return noise[off : off + n]
+
+
 def generate_split(split: str, index: dict, cfg: dict, n_mix: int, seed: int) -> None:
     sr = cfg["sample_rate"]
     min_len = int(cfg["min_len_sec"] * sr)
     lo, hi = cfg["snr_range"]
+
+    noise_cfg = cfg.get("noise")
+    if noise_cfg:
+        noise_files = sorted(str(p) for p in Path(noise_cfg["dirs"][split]).glob("*.wav"))
+        assert noise_files, f"no noise wavs in {noise_cfg['dirs'][split]}"
+        n_lo, n_hi = noise_cfg["snr_range"]
+        resamplers: dict = {}
+        # 雑音専用の独立 rng: 話者ペア・SNR の乱数列をクリーン版と一致させ、
+        # 「同一混合の雑音あり/なし」比較を可能にするため(共有 rng だと列がずれる)
+        rng_noise = np.random.default_rng(seed + 1000)
 
     by_spk = defaultdict(list)
     for path, n in index.items():
@@ -78,7 +108,8 @@ def generate_split(split: str, index: dict, cfg: dict, n_mix: int, seed: int) ->
           f"{sum(len(v) for v in by_spk.values())} usable utterances -> {n_mix} mixtures")
 
     out = Path(cfg["out_dir"]) / split
-    for sub in ("mix", "s1", "s2"):
+    subs = ("mix", "s1", "s2", "noise") if noise_cfg else ("mix", "s1", "s2")
+    for sub in subs:
         (out / sub).mkdir(parents=True, exist_ok=True)
 
     rng = np.random.default_rng(seed)
@@ -98,22 +129,43 @@ def generate_split(split: str, index: dict, cfg: dict, n_mix: int, seed: int) ->
         p_s1 = np.mean(s1**2) + 1e-10
         p_s2 = np.mean(s2**2) + 1e-10
         s2 = s2 * np.sqrt(p_s1 / p_s2 / 10 ** (snr / 10))
-        mix = s1 + s2
 
-        # クリップ回避: 全信号を同率スケール(SNR と mix=s1+s2 を保存)
-        peak = max(np.abs(mix).max(), np.abs(s1).max(), np.abs(s2).max())
+        if noise_cfg:
+            np_path = noise_files[rng_noise.integers(len(noise_files))]
+            noise = load_noise(np_path, n, sr, resamplers, rng_noise)
+            # WHAM! 準拠: 大きい方の話者パワーに対する雑音 SNR
+            noise_snr = rng_noise.uniform(n_lo, n_hi)
+            p_louder = max(np.mean(s1**2), np.mean(s2**2)) + 1e-10
+            p_noise = np.mean(noise**2) + 1e-10
+            noise = noise * np.sqrt(p_louder / p_noise / 10 ** (noise_snr / 10))
+        else:
+            noise = np.zeros_like(s1)
+
+        mix = s1 + s2 + noise
+
+        # クリップ回避: 全信号を同率スケール(SNR と mix=Σsources を保存)
+        peak = max(np.abs(mix).max(), np.abs(s1).max(), np.abs(s2).max(), np.abs(noise).max())
         if peak > 0.9:
             g = 0.9 / peak
-            s1, s2, mix = s1 * g, s2 * g, mix * g
+            s1, s2, noise, mix = s1 * g, s2 * g, noise * g, mix * g
 
         mix_id = f"{i:06d}"
-        for sub, sig in (("mix", mix), ("s1", s1), ("s2", s2)):
+        sigs = [("mix", mix), ("s1", s1), ("s2", s2)]
+        if noise_cfg:
+            sigs.append(("noise", noise))
+        for sub, sig in sigs:
             sf.write(out / sub / f"{mix_id}.wav", sig, sr, subtype="PCM_16")
-        rows.append([mix_id, p1, p2, f"{snr:.2f}", n])
+        row = [mix_id, p1, p2, f"{snr:.2f}", n]
+        if noise_cfg:
+            row += [np_path, f"{noise_snr:.2f}"]
+        rows.append(row)
 
     with open(out / "metadata.csv", "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["id", "s1_src", "s2_src", "snr_db", "num_samples"])
+        header = ["id", "s1_src", "s2_src", "snr_db", "num_samples"]
+        if noise_cfg:
+            header += ["noise_src", "noise_snr_db"]
+        w.writerow(header)
         w.writerows(rows)
     dur_h = sum(int(r[4]) for r in rows) / sr / 3600
     print(f"[{split}] done: {n_mix} mixtures ({dur_h:.1f} h) -> {out}")
