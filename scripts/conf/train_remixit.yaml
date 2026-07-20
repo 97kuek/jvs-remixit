@@ -7,14 +7,15 @@ segment_sec: 4.0
 batch_size: 2          # バッチ内置換のため 2 以上必須
 grad_accum: 2
 num_workers: 4
-epochs: 60
+epochs: 30             # 実測(83分/epoch)で 60 だと約7.6日かかり間に合わないため30に縮小(RemixIT論文でも改善の大半はepoch20-40で頭打ち)
 lr: 1.0e-3
 warmup_steps: 4000
 lr_min_ratio: 0.01
 weight_decay: 1.0e-2
 grad_clip: 5.0
+early_stop_patience: 8  # E1に倣い追加(元実装は無条件60エポック走行というオーバーサイトだった)
 seed: 0
 
 # 教師更新プロトコル(DEC: E2 = static, E3 = sequential)
 teacher_update: static        # static | sequential
-update_every_epochs: 20       # sequential 時のみ有効(RemixIT 論文準拠)
+update_every_epochs: 15       # sequential 時のみ有効。epochs=30に合わせて20→15に短縮(RemixIT論文の20は元epochs=60前提)

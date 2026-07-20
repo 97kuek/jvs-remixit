@@ -52,3 +52,8 @@
 - E2(RemixIT, static 教師 = WHAMR! 版): GPU1, `exp/e2_remixit_static/`, W&B run `e2_remixit_static`
 - 設定: batch 2 × 4秒 + 勾配累積2(実効batch4)、AdamW、warmup4000+cosine、最大60エポック(E1は早期終了patience10)
 - 進捗はこのファイルに追記していく。
+
+### 実測ペースと E2 の修正 (2026-07-20, 経過1.7h時点)
+
+- W&B 実測: E1 約91分/epoch(epoch0完了、valid loss −2.86)。E2(RemixIT)約183分/epoch(教師推論を毎ステップ挟むため約2倍)。
+- E2 は早期終了未実装のまま epochs:60 だったため、このペースで完走すると約7.6日かかり締切に間に合わないと判明(DEC-013)。E2 を停止し、早期終了(patience8)+epochs:30 に修正して GPU1 で再起動。E1 は順調なため継続。

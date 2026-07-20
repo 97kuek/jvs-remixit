@@ -79,6 +79,7 @@ def main():
         return pit_neg_si_snr(student(remixed), targets)
 
     best = float("inf")
+    patience = 0
     n_updates = 0
     for epoch in range(cfg["epochs"]):
         # E3: sequential 教師更新(RemixIT 論文の 20 エポック毎プロトコル)
@@ -89,6 +90,8 @@ def main():
                 p.requires_grad_(False)
             n_updates += 1
             print(f"epoch {epoch}: teacher <- student (update #{n_updates})")
+            # 教師が変わると検証損失の基準も変わるため、早期終了のカウンタをリセットする
+            best, patience = float("inf"), 0
 
         student.train()
         for step, mix in enumerate(tr):
@@ -124,12 +127,17 @@ def main():
         print(f"epoch {epoch} valid_loss(vs teacher) {vloss:.2f}")
         if wb:
             wb.log({"valid/loss_vs_teacher": vloss, "epoch": epoch})
-        # 教師更新で検証損失の基準が変わるため、best 更新は同一教師期間内でのみ意味を持つ。
-        # 最新エポックも常に保存し、品質判断は test 評価で行う。
+        # 教師更新で検証損失の基準が変わるため、best/patience は直近の教師更新以降でのみ意味を持つ
+        # (教師更新時にリセット済み)。最新エポックも常に保存し、品質判断は test 評価で行う。
         save_checkpoint(out / "last.pth", student, cfg["model_config"], epoch, vloss)
         if vloss < best:
-            best = vloss
+            best, patience = vloss, 0
             save_checkpoint(out / "best.pth", student, cfg["model_config"], epoch, vloss)
+        else:
+            patience += 1
+            if patience >= cfg["early_stop_patience"]:
+                print(f"early stop at epoch {epoch} (best {best:.2f} since last teacher update)")
+                break
     if wb:
         wb.finish()
 
