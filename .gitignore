@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+# data/exp は NAS へのシンボリックリンク(実体・リンクとも管理外)
+exp
+data
+wandb/
+*.pth
+*.ckpt
+.ipynb_checkpoints/

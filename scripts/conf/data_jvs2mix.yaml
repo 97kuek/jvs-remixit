@@ -1,0 +1,14 @@
+# JVS 2話者混合の生成条件 (DEC-008)
+sample_rate: 8000            # 教師 ckpt (MERL, 8kHz) に合わせる
+snr_range: [-5.0, 5.0]       # s1 に対する s1/s2 比 [dB]、一様分布
+min_len_sec: 1.0             # これ未満の発話はペア候補から除外
+num_mixtures:
+  train: 20000
+  valid: 1000
+  test: 1000
+filelists:
+  train: /home/kueki/corpora/jvs/train_wavs.txt
+  valid: /home/kueki/corpora/jvs/valid_wavs.txt
+  test: /home/kueki/corpora/jvs/test_wavs.txt
+out_dir: data/jvs2mix_8k
+seed: 20260720               # split ごとに +0/+1/+2 される
