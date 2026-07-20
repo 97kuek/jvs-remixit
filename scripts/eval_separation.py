@@ -15,11 +15,14 @@ ESPnet の SeparateSpeech で推論し、正解 (s1/s2) と比較する。
 import argparse
 import csv
 import json
+import sys
 from itertools import permutations
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def si_snr(est: np.ndarray, ref: np.ndarray, eps: float = 1e-8) -> float:
@@ -52,6 +55,7 @@ def main():
     ap.add_argument("--limit", type=int, default=None, help="評価ファイル数の上限(smoke用)")
     args = ap.parse_args()
 
+    import remixit.espnet_compat  # noqa: F401  (tflocoformer をタスクへ実行時登録)
     from espnet2.bin.enh_inference import SeparateSpeech
     separate = SeparateSpeech(
         train_config=args.train_config,

@@ -7,11 +7,18 @@
 
 1. **GPU実行前に必ず `nvidia-smi` で他ユーザーの使用状況を確認する**(共有サーバー、RTX 2080 Ti 11GB ×3)。
    空いているGPUを `CUDA_VISIBLE_DEVICES` で明示指定。全部埋まっていたら実行せず報告。
+   他に使用者がいなければ **2枚まで同時使用可**(研究室了承済み、DEC-012)。3枚全部の占有はしない。
 2. **大容量物はローカルに置かない**。ルートFSは満杯(空き200MB前後)。生成データ・チェックポイント・
    ログは `data/` `exp/`(→ NAS `/mnt/kiso-qnap5/kueki/proken-A/` へのシンボリックリンク)配下に置く。
 3. **意思決定は [docs/03_decision_log.md](docs/03_decision_log.md) に ADR 形式で記録**(決定・背景・選択肢・理由)。
 4. **コード変更は [docs/06_change_log.md](docs/06_change_log.md) に「何を・なぜ・どう変えたか」を記録**。
 5. RemixIT の学習コード(E2/E3)は正解 s1/s2 に**絶対にアクセスしない**(mix/ のみ)。設計上の要請。
+
+## 実験ログ
+
+- 学習ジョブは **W&B** に記録する(project: `jvs-remixit`, entity: `97kuek-waseda-university`, DEC-011)。
+  run 名は実験 ID(e1_supervised / e2_remixit_static / e3_remixit_seq)に揃える。
+- 推論のみの評価(E0 等)は `exp/` 配下の CSV/JSON のみでよい。
 
 ## 環境
 

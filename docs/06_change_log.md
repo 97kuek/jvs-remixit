@@ -38,6 +38,12 @@
 
 - **考え**: ルートFSが満杯(空き199MB、主因は他ユーザー)で、ローカルにデータもチェックポイントも置けない(DEC-009)。リポジトリ内の相対パス(`data/...`)を保ったまま実体をNASに置くため、ディレクトリ本体ではなくシンボリックリンクにした。コードはパスを意識しなくてよい。
 
+### remixit/espnet_compat.py — TF-Locoformer の実行時登録(新規)
+
+- **問題**: 教師 ckpt の config.yaml は `separator: tflocoformer` を指定するが、環境の ESPnet 202402 の `separator_choices` に tflocoformer が未登録で、`SeparateSpeech` の構築が ValueError で失敗した(モジュール自体は環境に存在)。MERL 公式の手順は espnet2/tasks/enh.py への**パッチ適用**。
+- **考え**: ESPnet 本体は改変しない方針(05_architecture.md)のため、パッチではなく**実行時登録**にした。`separator_choices.classes` は素の dict なので、互換レイヤモジュール `remixit/espnet_compat.py` の import 時に 1 エントリ追加するだけで済む。ESPnet を再インストールしても壊れず、何をしているかがコード上で明示される。
+- **使い方**: モデル構築(SeparateSpeech / build_model)より前に `import remixit.espnet_compat` する。
+
 ### リポジトリ骨組み(新規)
 
 - README.md / CLAUDE.md / .gitignore / docs 一式。設計の全体像は [05_architecture.md](05_architecture.md)。
