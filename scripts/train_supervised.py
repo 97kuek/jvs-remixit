@@ -4,6 +4,9 @@
 使い方:
     CUDA_VISIBLE_DEVICES=0 conda run -n tflocoformer python scripts/train_supervised.py \
         --config scripts/conf/train_supervised.yaml --out_dir exp/e1_supervised
+
+途中から再開する場合:
+    ... --resume exp/e1_supervised/last.pth
 """
 import argparse
 import sys
@@ -27,6 +30,7 @@ def main():
     ap.add_argument("--out_dir", required=True)
     ap.add_argument("--data_dir", default=None, help="config の data_dir を上書き")
     ap.add_argument("--run_name", default="e1_supervised")
+    ap.add_argument("--resume", default=None, help="last.pth を指定して途中から再開する")
     ap.add_argument("--smoke", action="store_true", help="数ステップだけ実行して終了")
     ap.add_argument("--no_wandb", action="store_true")
     args = ap.parse_args()
@@ -48,10 +52,27 @@ def main():
     opt = torch.optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
     total_steps = cfg["epochs"] * len(tr) // cfg["grad_accum"]
     sched = warmup_cosine_scheduler(opt, cfg["warmup_steps"], total_steps, cfg["lr_min_ratio"])
+
+    start_epoch, best, patience = 0, float("inf"), 0
+    if args.resume:
+        ckpt = torch.load(args.resume, map_location=device)
+        model.load_state_dict(ckpt["model"])
+        start_epoch = ckpt["epoch"] + 1
+        if "optimizer" in ckpt:
+            opt.load_state_dict(ckpt["optimizer"])
+            sched.load_state_dict(ckpt["scheduler"])
+        else:
+            # optimizer/scheduler の状態を持たない旧形式のckpt。学習率だけ位置を合わせ直す
+            for _ in range(start_epoch * len(tr) // cfg["grad_accum"]):
+                sched.step()
+        best = ckpt.get("best", ckpt["valid_loss"])
+        patience = ckpt.get("patience", 0)
+        print(f"resumed from {args.resume}: epoch {ckpt['epoch']} 完了時点 "
+              f"(best={best:.2f}, patience={patience})。epoch {start_epoch} から再開する")
+
     wb = init_wandb(args.run_name, cfg, enabled=not args.no_wandb and not args.smoke)
 
-    best, patience = float("inf"), 0
-    for epoch in range(cfg["epochs"]):
+    for epoch in range(start_epoch, cfg["epochs"]):
         model.train()
         for step, (mix, refs) in enumerate(tr):
             mix, refs = mix.to(device), refs.to(device)
@@ -80,12 +101,17 @@ def main():
             wb.log({"valid/loss": vloss, "epoch": epoch})
         if vloss < best:
             best, patience = vloss, 0
-            save_checkpoint(out / "best.pth", model, cfg["model_config"], epoch, vloss)
         else:
             patience += 1
-            if patience >= cfg["early_stop_patience"]:
-                print(f"early stop at epoch {epoch} (best {best:.2f})")
-                break
+        # last.pth は毎エポック無条件に保存する(再開用。optimizer/schedulerの状態も含む)
+        save_checkpoint(out / "last.pth", model, cfg["model_config"], epoch, vloss,
+                         optimizer=opt.state_dict(), scheduler=sched.state_dict(),
+                         best=best, patience=patience)
+        if patience == 0:
+            save_checkpoint(out / "best.pth", model, cfg["model_config"], epoch, vloss)
+        elif patience >= cfg["early_stop_patience"]:
+            print(f"early stop at epoch {epoch} (best {best:.2f})")
+            break
     if wb:
         wb.finish()
 

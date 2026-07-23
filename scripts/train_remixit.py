@@ -14,6 +14,9 @@
 使い方:
     CUDA_VISIBLE_DEVICES=0 conda run -n tflocoformer python scripts/train_remixit.py \
         --config scripts/conf/train_remixit.yaml --out_dir exp/e2_remixit_static
+
+途中から再開する場合:
+    ... --resume exp/e2_remixit_static/last.pth
 """
 import argparse
 import copy
@@ -39,6 +42,7 @@ def main():
     ap.add_argument("--out_dir", required=True)
     ap.add_argument("--data_dir", default=None)
     ap.add_argument("--run_name", default=None)
+    ap.add_argument("--resume", default=None, help="last.pth を指定して途中から再開する")
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--no_wandb", action="store_true")
     args = ap.parse_args()
@@ -67,6 +71,28 @@ def main():
     opt = torch.optim.AdamW(student.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
     total_steps = cfg["epochs"] * len(tr) // cfg["grad_accum"]
     sched = warmup_cosine_scheduler(opt, cfg["warmup_steps"], total_steps, cfg["lr_min_ratio"])
+
+    start_epoch, best, patience, n_updates = 0, float("inf"), 0, 0
+    if args.resume:
+        ckpt = torch.load(args.resume, map_location=device)
+        student.load_state_dict(ckpt["model"])
+        start_epoch = ckpt["epoch"] + 1
+        if "optimizer" in ckpt:
+            opt.load_state_dict(ckpt["optimizer"])
+            sched.load_state_dict(ckpt["scheduler"])
+        else:
+            # optimizer/scheduler の状態を持たない旧形式のckpt。学習率だけ位置を合わせ直す
+            for _ in range(start_epoch * len(tr) // cfg["grad_accum"]):
+                sched.step()
+        best = ckpt.get("best", ckpt["valid_loss"])
+        patience = ckpt.get("patience", 0)
+        n_updates = ckpt.get("n_updates", 0)
+        if cfg["teacher_update"] == "sequential" and "teacher_state" in ckpt:
+            teacher.load_state_dict(ckpt["teacher_state"])
+        print(f"resumed from {args.resume}: epoch {ckpt['epoch']} 完了時点 "
+              f"(best={best:.2f}, patience={patience}, teacher_updates={n_updates})。"
+              f"epoch {start_epoch} から再開する")
+
     wb = init_wandb(run_name, cfg, enabled=not args.no_wandb and not args.smoke)
 
     perm_gen = torch.Generator().manual_seed(cfg["seed"])
@@ -78,10 +104,7 @@ def main():
         remixed, targets = remix(t_est, perm)
         return pit_neg_si_snr(student(remixed), targets)
 
-    best = float("inf")
-    patience = 0
-    n_updates = 0
-    for epoch in range(cfg["epochs"]):
+    for epoch in range(start_epoch, cfg["epochs"]):
         # E3: sequential 教師更新(RemixIT 論文の 20 エポック毎プロトコル)
         if (cfg["teacher_update"] == "sequential" and epoch > 0
                 and epoch % cfg["update_every_epochs"] == 0):
@@ -129,15 +152,21 @@ def main():
             wb.log({"valid/loss_vs_teacher": vloss, "epoch": epoch})
         # 教師更新で検証損失の基準が変わるため、best/patience は直近の教師更新以降でのみ意味を持つ
         # (教師更新時にリセット済み)。最新エポックも常に保存し、品質判断は test 評価で行う。
-        save_checkpoint(out / "last.pth", student, cfg["model_config"], epoch, vloss)
         if vloss < best:
             best, patience = vloss, 0
-            save_checkpoint(out / "best.pth", student, cfg["model_config"], epoch, vloss)
         else:
             patience += 1
-            if patience >= cfg["early_stop_patience"]:
-                print(f"early stop at epoch {epoch} (best {best:.2f} since last teacher update)")
-                break
+        # last.pth は毎エポック無条件に保存する(再開用。optimizer/scheduler/教師の状態も含む)
+        extra = dict(optimizer=opt.state_dict(), scheduler=sched.state_dict(),
+                     best=best, patience=patience, n_updates=n_updates)
+        if cfg["teacher_update"] == "sequential":
+            extra["teacher_state"] = teacher.state_dict()
+        save_checkpoint(out / "last.pth", student, cfg["model_config"], epoch, vloss, **extra)
+        if patience == 0:
+            save_checkpoint(out / "best.pth", student, cfg["model_config"], epoch, vloss)
+        elif patience >= cfg["early_stop_patience"]:
+            print(f"early stop at epoch {epoch} (best {best:.2f} since last teacher update)")
+            break
     if wb:
         wb.finish()
 

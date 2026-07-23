@@ -20,13 +20,16 @@ def warmup_cosine_scheduler(optimizer, warmup_steps: int, total_steps: int, min_
     return torch.optim.lr_scheduler.LambdaLR(optimizer, fn)
 
 
-def save_checkpoint(path: Path, model, model_cfg: str, epoch: int, valid_loss: float):
+def save_checkpoint(path: Path, model, model_cfg: str, epoch: int, valid_loss: float, **extra):
+    """extra には optimizer / scheduler の state_dict、best、patience などを渡し、
+    途中から再開できるようにする(すべて任意)。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(
-        {"model": model.state_dict(), "model_cfg": model_cfg,
-         "epoch": epoch, "valid_loss": valid_loss},
-        path,
-    )
+    ckpt = {"model": model.state_dict(), "model_cfg": model_cfg,
+            "epoch": epoch, "valid_loss": valid_loss}
+    ckpt.update(extra)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    torch.save(ckpt, tmp)
+    tmp.replace(path)  # 保存中に落ちても既存ファイルを壊さない
 
 
 def load_student_checkpoint(path: str, device: str = "cpu"):
