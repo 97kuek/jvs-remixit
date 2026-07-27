@@ -34,14 +34,19 @@ def si_snr(est: np.ndarray, ref: np.ndarray, eps: float = 1e-8) -> float:
 
 
 def pit_si_snr(ests, refs):
-    """全置換のうち平均 SI-SNR 最大のものを返す。"""
+    """全ての(部分集合選択×並べ替え)のうち平均 SI-SNR 最大のものを返す。
+
+    len(ests) > len(refs) の場合(例: 話者2+雑音1の3出力を、正解が話者2つの
+    データで評価する。DEC-016)にも対応し、ests から refs と同数を選んで
+    順序も含めて全通り試す。len(ests) == len(refs) なら従来どおり全置換。
+    """
     best = None
-    for perm in permutations(range(len(refs))):
-        vals = [si_snr(ests[i], refs[j]) for i, j in enumerate(perm)]
+    for combo in permutations(range(len(ests)), len(refs)):
+        vals = [si_snr(ests[i], refs[j]) for j, i in enumerate(combo)]
         mean = sum(vals) / len(vals)
         if best is None or mean > best[0]:
-            best = (mean, vals, perm)
-    return best  # (mean, per-source, perm)
+            best = (mean, vals, combo)
+    return best  # (mean, per-source, combo)
 
 
 def main():
@@ -96,7 +101,7 @@ def main():
         refs = [sf.read(data / s / f"{mid}.wav", dtype="float32")[0] for s in ("s1", "s2")]
         ests = separate(mix[None, :], fs=sr)
         ests = [e[0] for e in ests]
-        assert len(ests) == 2, f"expected 2 sources, got {len(ests)}"
+        assert len(ests) >= len(refs), f"expected >= {len(refs)} sources, got {len(ests)}"
 
         mean_snr, per_src, _ = pit_si_snr(ests, refs)
         # 入力そのまま(mix)の SI-SNR を引いて改善量に

@@ -1,12 +1,19 @@
 #!/usr/bin/env python
-"""E2/E3: RemixIT 自己学習(2話者分離版)。
+"""E2/E3: RemixIT 自己学習(2話者+雑音の3出力版、DEC-016)。
 
 各ステップ:
   1. ドメイン内混合音 m のバッチをサンプル(正解 s1/s2 には一切触れない)
-  2. 教師推定 (s̃1, s̃2) = f_T(m)  [no_grad]
-  3. リミキシング: m̃ = s̃1 + P s̃2(P はバッチ内 derangement)
-  4. 生徒学習: PIT-SI-SNR( f_S(m̃), (s̃1, P s̃2) )
-  5. sequential の場合、update_every_epochs ごとに教師 ← 生徒のコピー
+  2. 教師推定から (話者2つ s̃1,s̃2 / 雑音1つ ñ) を取り出す [no_grad]
+     (教師が話者2出力のみなら ñ = m − s̃1 − s̃2 を計算。DEC-016)
+  3. リミキシング: m̃ = s̃1 + P s̃2 + ñ(P はバッチ内 derangement、雑音は入れ替えない)
+  4. 生徒(3出力)学習: PIT-SI-SNR( f_S(m̃), (s̃1, P s̃2, ñ) )
+  5. sequential の場合、update_every_epochs ごとに教師 ← 生徒のコピー(以後3出力)
+
+DEC-016: 話者スロットだけでなく雑音まで入れ替えると、元は1つしかない環境雑音が
+疑似混合では2つ重なってしまい、実際にはあり得ない分布になって生成不能に近い
+結果になった(E2最終 -1.61dB / E3途中 -4.8dB、いずれもE0の教師そのまま9.09dBを
+下回る)。雑音を第3の出力として明示的に扱い、話者スロットのみ入れ替えることで
+疑似混合の雑音を常に1つの録音由来に保つ。
 
 検証損失は「教師ターゲットとの一致度」であり真の分離品質ではない(発散検知用)。
 品質評価は学習後に eval_separation.py(正解あり test)で行う。
@@ -31,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from remixit.datasets import MixtureOnlyDataset
 from remixit.losses import pit_neg_si_snr
-from remixit.remix import remix, sample_derangement
+from remixit.remix import remix_with_noise, sample_derangement, split_teacher_estimate
 from remixit.separator import build_student, load_pretrained
 from remixit.training import init_wandb, save_checkpoint, warmup_cosine_scheduler
 
@@ -88,7 +95,13 @@ def main():
         patience = ckpt.get("patience", 0)
         n_updates = ckpt.get("n_updates", 0)
         if cfg["teacher_update"] == "sequential" and "teacher_state" in ckpt:
+            # 教師更新後は生徒と同じ構造(build_student)になっている。
+            # 元の事前学習済み教師(load_pretrained)とは構造が違うため別物として作り直す
+            teacher = build_student(cfg["model_config"], device)
             teacher.load_state_dict(ckpt["teacher_state"])
+            teacher.eval()
+            for p in teacher.parameters():
+                p.requires_grad_(False)
         print(f"resumed from {args.resume}: epoch {ckpt['epoch']} 完了時点 "
               f"(best={best:.2f}, patience={patience}, teacher_updates={n_updates})。"
               f"epoch {start_epoch} から再開する")
@@ -100,8 +113,9 @@ def main():
     def remixit_loss(mix_batch):
         with torch.no_grad():
             t_est = teacher(mix_batch)
+        speaker_est, noise_est = split_teacher_estimate(t_est, mix_batch)
         perm = sample_derangement(mix_batch.size(0), generator=perm_gen)
-        remixed, targets = remix(t_est, perm)
+        remixed, targets = remix_with_noise(speaker_est, noise_est, perm)
         return pit_neg_si_snr(student(remixed), targets)
 
     for epoch in range(start_epoch, cfg["epochs"]):
@@ -143,8 +157,9 @@ def main():
             for mix in cv:
                 mix = mix.to(device)
                 t_est = teacher(mix)
+                speaker_est, noise_est = split_teacher_estimate(t_est, mix)
                 perm = sample_derangement(mix.size(0), generator=cv_perm_gen)
-                remixed, targets = remix(t_est, perm)
+                remixed, targets = remix_with_noise(speaker_est, noise_est, perm)
                 vloss += pit_neg_si_snr(student(remixed), targets).item()
             vloss /= len(cv)
         print(f"epoch {epoch} valid_loss(vs teacher) {vloss:.2f}")

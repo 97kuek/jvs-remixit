@@ -1,0 +1,21 @@
+# 生徒モデル: TF-Locoformer Small、出力3つ(話者2 + 雑音1、DEC-016)
+# RemixIT(E2/E3)で雑音を別出力として明示的に扱うための構成。
+# model_small.yaml との差分は separator.num_spk: 2 -> 3 のみ。
+stft:
+  n_fft: 128
+  hop_length: 64
+separator:
+  num_spk: 3
+  n_layers: 4
+  emb_dim: 96
+  norm_type: rmsgroupnorm
+  num_groups: 4
+  tf_order: ft
+  n_heads: 4
+  flash_attention: false
+  attention_dim: 96
+  ffn_type: [swiglu_conv1d, swiglu_conv1d]
+  ffn_hidden_dim: [256, 256]
+  conv1d_kernel: 4
+  conv1d_shift: 1
+  dropout: 0.0
