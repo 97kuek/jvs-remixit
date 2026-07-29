@@ -1,0 +1,24 @@
+# E2/E3 検証用: バッチサイズを上げる案(Codexセカンドオピニオン、2026-07-29)
+# リミキシングの多様性がbatch_size=2では乏しく、RemixITの理論的前提
+# (誤差相関がバッチ平均でゼロに近づく)が弱いという指摘を受けての検証実験。
+# AMP(自動混合精度)でメモリを浮かせ、batch_size 2→4 を狙う。
+# まず数時間〜1日だけ回し、傾向を見てから本学習にするか判断する(DDPは見送り)。
+data_dir: data/jvs2mix_noisy_8k
+model_config: scripts/conf/model_small_3out.yaml
+teacher_exp_dir: /mnt/kiso-qnap5/kueki/proken-A/third_party/tf-locoformer/egs2/whamr/enh1/exp/enh_train_enh_tflocoformer_raw
+sample_rate: 8000
+segment_sec: 3.0        # 4.0→3.0(バッチ4を11GBに収めるため。2.0までは削らない、Codex案)
+batch_size: 4           # 2→4(リミキシングの多様性を上げる本命の変更)
+grad_accum: 1           # batch自体を上げたので勾配蓄積は不要(実効batch=4)
+amp: true               # 自動混合精度でメモリを浮かせる(batch4×3秒が11GBに収まるか検証)
+num_workers: 4
+epochs: 30
+lr: 1.0e-3
+warmup_steps: 4000
+lr_min_ratio: 0.01
+weight_decay: 1.0e-2
+grad_clip: 5.0
+early_stop_patience: 8
+seed: 0
+teacher_update: static
+update_every_epochs: 15

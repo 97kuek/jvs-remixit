@@ -9,6 +9,11 @@
   4. 生徒(3出力)学習: PIT-SI-SNR( f_S(m̃), (s̃1, P s̃2, ñ) )
   5. sequential の場合、update_every_epochs ごとに教師 ← 生徒のコピー(以後3出力)
 
+バッチサイズについて: RemixIT はバッチ内でリミキシングするため、バッチサイズが
+小さいと疑似データの多様性が乏しく、理論上の前提(誤差相関がバッチ平均で
+ゼロに近づく)が弱くなる(Codexのセカンドオピニオンで指摘)。11GBのGPUで
+バッチサイズを上げるため、AMP(自動混合精度)を追加した(`cfg["amp"]: true`)。
+
 DEC-016: 話者スロットだけでなく雑音まで入れ替えると、元は1つしかない環境雑音が
 疑似混合では2つ重なってしまい、実際にはあり得ない分布になって生成不能に近い
 結果になった(E2最終 -1.61dB / E3途中 -4.8dB、いずれもE0の教師そのまま9.09dBを
@@ -78,6 +83,8 @@ def main():
     opt = torch.optim.AdamW(student.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
     total_steps = cfg["epochs"] * len(tr) // cfg["grad_accum"]
     sched = warmup_cosine_scheduler(opt, cfg["warmup_steps"], total_steps, cfg["lr_min_ratio"])
+    use_amp = cfg.get("amp", False) and device == "cuda"
+    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
 
     start_epoch, best, patience, n_updates = 0, float("inf"), 0, 0
     if args.resume:
@@ -87,6 +94,8 @@ def main():
         if "optimizer" in ckpt:
             opt.load_state_dict(ckpt["optimizer"])
             sched.load_state_dict(ckpt["scheduler"])
+            if "scaler" in ckpt:
+                scaler.load_state_dict(ckpt["scaler"])
         else:
             # optimizer/scheduler の状態を持たない旧形式のckpt。学習率だけ位置を合わせ直す
             for _ in range(start_epoch * len(tr) // cfg["grad_accum"]):
@@ -111,12 +120,14 @@ def main():
     perm_gen = torch.Generator().manual_seed(cfg["seed"])
 
     def remixit_loss(mix_batch):
-        with torch.no_grad():
+        with torch.no_grad(), torch.cuda.amp.autocast(enabled=use_amp):
             t_est = teacher(mix_batch)
         speaker_est, noise_est = split_teacher_estimate(t_est, mix_batch)
         perm = sample_derangement(mix_batch.size(0), generator=perm_gen)
         remixed, targets = remix_with_noise(speaker_est, noise_est, perm)
-        return pit_neg_si_snr(student(remixed), targets)
+        with torch.cuda.amp.autocast(enabled=use_amp):
+            # SI-SNR の log/除算は精度に敏感なため、損失自体は float32 で計算する
+            return pit_neg_si_snr(student(remixed).float(), targets.float())
 
     for epoch in range(start_epoch, cfg["epochs"]):
         # E3: sequential 教師更新(RemixIT 論文の 20 エポック毎プロトコル)
@@ -133,10 +144,12 @@ def main():
         student.train()
         for step, mix in enumerate(tr):
             loss = remixit_loss(mix.to(device)) / cfg["grad_accum"]
-            loss.backward()
+            scaler.scale(loss).backward()
             if (step + 1) % cfg["grad_accum"] == 0:
+                scaler.unscale_(opt)
                 torch.nn.utils.clip_grad_norm_(student.parameters(), cfg["grad_clip"])
-                opt.step()
+                scaler.step(opt)
+                scaler.update()
                 opt.zero_grad()
                 sched.step()
             if step % 50 == 0:
@@ -152,7 +165,7 @@ def main():
         student.eval()
         torch.manual_seed(0)  # 検証のクロップを毎エポック同一に
         cv_perm_gen = torch.Generator().manual_seed(0)  # 検証の置換も固定
-        with torch.no_grad():
+        with torch.no_grad(), torch.cuda.amp.autocast(enabled=use_amp):
             vloss = 0.0
             for mix in cv:
                 mix = mix.to(device)
@@ -160,7 +173,7 @@ def main():
                 speaker_est, noise_est = split_teacher_estimate(t_est, mix)
                 perm = sample_derangement(mix.size(0), generator=cv_perm_gen)
                 remixed, targets = remix_with_noise(speaker_est, noise_est, perm)
-                vloss += pit_neg_si_snr(student(remixed), targets).item()
+                vloss += pit_neg_si_snr(student(remixed).float(), targets.float()).item()
             vloss /= len(cv)
         print(f"epoch {epoch} valid_loss(vs teacher) {vloss:.2f}")
         if wb:
@@ -173,6 +186,7 @@ def main():
             patience += 1
         # last.pth は毎エポック無条件に保存する(再開用。optimizer/scheduler/教師の状態も含む)
         extra = dict(optimizer=opt.state_dict(), scheduler=sched.state_dict(),
+                     scaler=scaler.state_dict(),
                      best=best, patience=patience, n_updates=n_updates)
         if cfg["teacher_update"] == "sequential":
             extra["teacher_state"] = teacher.state_dict()

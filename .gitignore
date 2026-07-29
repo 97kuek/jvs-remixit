@@ -8,3 +8,4 @@ wandb/
 *.pth
 *.ckpt
 .ipynb_checkpoints/
+.claude/
