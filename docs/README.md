@@ -13,6 +13,7 @@
 | [06_change_log.md](06_change_log.md) | コードの変更ログ(何を・なぜ・どう変えたか) |
 | [07_results.md](07_results.md) | 実験結果ログ(E0から随時更新) |
 | [08_presentation_outline.md](08_presentation_outline.md) | 発表資料の骨子(下書き) |
+| [09_related_work_review.md](09_related_work_review.md) | 関連研究の調査・客観的なレビュー |
 | RemixIT.pdf / TF-Locoformer.pdf | 元の論文 |
 
 - AIエージェント向けの作業ルールはリポジトリ直下の [CLAUDE.md](../CLAUDE.md) を見ること
