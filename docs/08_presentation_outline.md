@@ -37,13 +37,14 @@
 - これは「クリーンな読み上げ音声どうしの話者分離では、言語の違いだけではほとんど障害にならない」という副次的な発見であり、それ自体語れる知見
 - そこで適応先を雑音つきに難しくした(WHAM! noise追加)
 - 雑音つきでは英語教師は大きく劣化する: WSJ0-2mix 0.57dB / Libri2mix 3.18dB / **WHAMR! 9.09dB**(採用教師)
-- 図案: クリーン vs 雑音つきでの3教師のSI-SNR改善量を棒グラフで対比
+- 図: [figures/fig1_e0_clean_vs_noisy.png](figures/fig1_e0_clean_vs_noisy.png)(クリーン vs 雑音つきでの3教師のSI-SNR改善量)
 - 詳細: [07_results.md](07_results.md) E0の節
 
 ## 6. 結果2: E1(確定)— 教師あり学習の上限
 
 - 同じ雑音つきデータで、正解ラベルを使って教師あり学習した場合の上限: **SI-SNR改善量13.23dB**
 - 教師そのまま(9.09dB)との差、約4.1dBが「正解なしでRemixITがどこまで埋められるか」の目標
+- 図: [figures/fig2_main_ladder.png](figures/fig2_main_ladder.png)(入力→E0→E2→E1の並び。現時点でのE2は元の構成の最終値−1.61dBを暫定表示)
 - 詳細: [07_results.md](07_results.md) E1の節
 
 ## 7. 結果3: E2/E3(RemixIT)— ここが本題、二通りの見せ方を用意
@@ -76,7 +77,7 @@
 - 発見2: リミキシングで話者2のスロットを別録音に入れ替えると、環境雑音が二重に重なる非現実的な疑似混合になっていた(DEC-016)
 - 対応: 雑音を第3の出力として明示的に分離する構成に変更 → 学習序盤は改善したが、学習が進むと再び悪化する傾向が見えた
 - セカンドオピニオン(独立したAIエージェントによるレビュー)を活用し、バッチサイズがRemixITの理論的前提に対して小さすぎる可能性など、追加の要因を洗い出した
-- 図案: 「入力音量異常の発見 → consistency補正の失敗による原因の絞り込み → 雑音分離の構成変更 → バッチサイズの検証」という一連の流れをタイムラインで見せる
+- 図: [figures/fig3_diagnosis_progress.png](figures/fig3_diagnosis_progress.png)(原因を切り分けるたびに実データ品質のピークが改善している様子)、[figures/fig4_internal_vs_real_divergence.png](figures/fig4_internal_vs_real_divergence.png)(「教師との一致度」と実品質の乖離)
 
 ## 10. 考察・今後の展望(確定部分+結果待ち部分)
 
