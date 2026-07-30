@@ -105,17 +105,15 @@ plt.close(fig)
 # ── 図3: 診断の過程で観測された実データ品質のピーク値 ──────────────
 fig, ax = plt.subplots(figsize=(10, 4.8), dpi=200)
 labels = ["E2 (元の構成)\n最終値\n[1000件]",
-          "E2 (雑音分離後)\n初期のピーク\n[300件]",
-          "E3 (教師逐次更新)\n初期のピーク\n[300件]",
-          "E2 (バッチ拡張)\nエポック9時点\n[300件, 進行中]"]
+          "E2 (雑音分離後)\nピーク\n[300件]",
+          "E3 (教師逐次更新)\nピーク\n[300件]",
+          "バッチ拡張後\nピーク(エポック9)\n[300件]"]
 values = [-1.61, 0.14, 0.38, 0.66]
 colors = [GRAY, ORANGE, YELLOW, BLUE]
 bar_with_labels(ax, range(len(labels)), values, colors)
 ax.set_xticks(range(len(labels)))
 ax.set_xticklabels(labels, fontsize=10.5)
 ax.set_ylabel("SI-SNR 改善量 [dB]", fontsize=12)
-ax.text(0.5, 0.02, "※右端(バッチ拡張)は学習継続中の途中経過。最終値ではない",
-        transform=ax.transAxes, ha="center", fontsize=9.5, color=TEXT_MUTED)
 fig.tight_layout()
 fig.savefig(OUT / "fig3_diagnosis_progress.png")
 plt.close(fig)
@@ -130,6 +128,25 @@ ax.set_xticklabels(stages, fontsize=12)
 ax.set_ylabel("SI-SNR 改善量 [dB]", fontsize=12)
 fig.tight_layout()
 fig.savefig(OUT / "fig4_internal_vs_real_divergence.png")
+plt.close(fig)
+
+# ── 図5: バッチ拡張後もピーク→悪化は再現された(エポック9→11→12) ──
+fig, ax = plt.subplots(figsize=(8, 4.8), dpi=200)
+epochs = [9, 11, 12]
+values5 = [0.66, 0.34, -0.29]
+ax.plot(epochs, values5, color=BLUE, linewidth=2, marker="o", markersize=8, zorder=3)
+for e, v in zip(epochs, values5):
+    ax.annotate(f"{v:+.2f} dB", (e, v), textcoords="offset points",
+                xytext=(0, 12 if v == max(values5) else -18), ha="center", fontsize=11, color=TEXT)
+ax.axhline(0, color="#d8d7d2", linewidth=1, zorder=1)
+ax.grid(axis="y", color="#eeeeec", linewidth=1, zorder=0)
+ax.set_axisbelow(True)
+ax.set_xticks(epochs)
+ax.set_xlabel("エポック(バッチサイズ拡張後)", fontsize=12)
+ax.set_ylabel("SI-SNR 改善量 [dB]", fontsize=12)
+ax.set_xlim(8, 13)
+fig.tight_layout()
+fig.savefig(OUT / "fig5_bigbatch_peak_then_decline.png")
 plt.close(fig)
 
 print("生成した図:")

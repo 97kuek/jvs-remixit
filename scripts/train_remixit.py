@@ -193,7 +193,13 @@ def main():
         save_checkpoint(out / "last.pth", student, cfg["model_config"], epoch, vloss, **extra)
         if patience == 0:
             save_checkpoint(out / "best.pth", student, cfg["model_config"], epoch, vloss)
-        elif patience >= cfg["early_stop_patience"]:
+        # 「教師との一致度」で選ぶbest.pthは実分離品質のbestとは限らない(2026-07-30の
+        # 観測: バッチサイズを上げても、内部指標が改善し続ける一方で実データの品質は
+        # 早期にピークを迎えてその後悪化する現象が繰り返された)。best/last だけでは
+        # 後から上書きされて実データ上のピークのエポックを再現できなくなるため、
+        # 各エポックのモデル重みだけを別途残しておく(optimizer等は含めず軽量に)
+        save_checkpoint(out / "epochs" / f"epoch{epoch:03d}.pth", student, cfg["model_config"], epoch, vloss)
+        if patience >= cfg["early_stop_patience"]:
             print(f"early stop at epoch {epoch} (best {best:.2f} since last teacher update)")
             break
     if wb:
